@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shopify Taxonomy Diff Analyzer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js" defer></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       LOADING OVERLAY
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="loading-overlay" class="loading-overlay" aria-live="polite" aria-label="Loading taxonomy data">
+    <div class="loading-box">
+      <div class="shopify-logo">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <path d="M27.8 8.6c-.1-.7-.7-1.1-1.2-1.1s-3.7-.3-3.7-.3S20.5 4.8 20.2 4.5c-.3-.3-.9-.2-1.1-.1l-1.5.5C17 3.9 16 3 14.5 3c-3.5 0-5.2 4.4-5.7 6.6L6.5 10.6C5.6 10.9 5.5 11 5.4 11.8L3 30.1l17.5 3.3L29 31.6 27.8 8.6z" fill="#96BF48"/>
+          <path d="M26.6 7.5c-.5 0-3.7-.3-3.7-.3S20.5 4.8 20.2 4.5c-.1-.1-.2-.1-.4-.1V33.4l8.5-1.8-1.7-22c0-.7-.5-1.1-1-1.1z" fill="#5E8E3E"/>
+          <path d="M14.5 13.5l-1 3.2s-1.2-.6-2.6-.6c-2.1 0-2.2 1.3-2.2 1.7 0 1.8 4.8 2.5 4.8 6.7 0 3.3-2.1 5.5-4.9 5.5-3.4 0-5.1-2.1-5.1-2.1l.9-3s1.8 1.5 3.3 1.5c1 0 1.4-.8 1.4-1.4 0-2.4-3.9-2.5-3.9-6.3 0-3.2 2.3-6.4 7-6.4 1.8.1 2.3.4 2.3.2z" fill="#fff"/>
+        </svg>
+      </div>
+      <h3 class="loading-title">Taxonomy Diff Analyzer</h3>
+      <p class="loading-subtitle" id="loading-message">Fetching taxonomy data…</p>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+      </div>
+      <p class="progress-label" id="progress-label">0%</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TOAST CONTAINER
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       HEADER
+  ═══════════════════════════════════════════════════════════ -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand">
+        <svg class="brand-icon" width="28" height="28" viewBox="0 0 40 40" fill="none">
+          <path d="M27.8 8.6c-.1-.7-.7-1.1-1.2-1.1s-3.7-.3-3.7-.3S20.5 4.8 20.2 4.5c-.3-.3-.9-.2-1.1-.1l-1.5.5C17 3.9 16 3 14.5 3c-3.5 0-5.2 4.4-5.7 6.6L6.5 10.6C5.6 10.9 5.5 11 5.4 11.8L3 30.1l17.5 3.3L29 31.6 27.8 8.6z" fill="#96BF48"/>
+          <path d="M26.6 7.5c-.5 0-3.7-.3-3.7-.3S20.5 4.8 20.2 4.5c-.1-.1-.2-.1-.4-.1V33.4l8.5-1.8-1.7-22c0-.7-.5-1.1-1-1.1z" fill="#5E8E3E"/>
+        </svg>
+        <span class="brand-name">Taxonomy Diff Analyzer</span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="version-selector">
+        <div class="version-group">
+          <label for="version-a" class="version-label">Source</label>
+          <select id="version-a" class="version-select" aria-label="Source version">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+        <div class="version-arrow">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </div>
+        <div class="version-group">
+          <label for="version-b" class="version-label">Target</label>
+          <select id="version-b" class="version-select" aria-label="Target version">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+        <button id="compare-btn" class="btn btn-primary" aria-label="Run comparison">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          Compare
+        </button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="search-wrapper">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <input type="search" id="global-search" class="search-input" placeholder="Search categories, attributes…" aria-label="Global search" />
+      </div>
+      <button id="dark-mode-toggle" class="icon-btn" aria-label="Toggle dark mode" data-tooltip="Toggle dark mode">
+        <span id="theme-icon">🌙</span>
+      </button>
+      <a href="https://github.com/Shopify/product-taxonomy" target="_blank" rel="noopener" class="icon-btn" data-tooltip="View on GitHub" aria-label="GitHub repository">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.014-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.607.069-.607 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836a9.59 9.59 0 012.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MAIN LAYOUT
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="app-layout" id="app-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar" aria-label="Page navigation">
+      <nav class="sidebar-nav">
+        <a href="#summary" class="sidebar-link active" data-section="summary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Summary
+        </a>
+        <a href="#categories" class="sidebar-link" data-section="categories">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          Categories
+          <span class="sidebar-badge" id="sidebar-cat-count"></span>
+        </a>
+        <a href="#attributes" class="sidebar-link" data-section="attributes">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          Attributes
+          <span class="sidebar-badge" id="sidebar-attr-count"></span>
+        </a>
+        <a href="#tree" class="sidebar-link" data-section="tree">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Tree View
+        </a>
+        <a href="#impact" class="sidebar-link" data-section="impact">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          Impact
+        </a>
+        <a href="#migration" class="sidebar-link" data-section="migration">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          Migration
+        </a>
+        <a href="#search-results" class="sidebar-link" data-section="search-results">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          Search
+        </a>
+        <a href="#product" class="sidebar-link" data-section="product">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+          Products
+        </a>
+      </nav>
+
+      <div class="sidebar-meta" id="sidebar-meta">
+        <div class="meta-item">
+          <span class="meta-label">Comparing</span>
+          <span class="meta-value" id="meta-versions">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Total Changes</span>
+          <span class="meta-value" id="meta-total">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Impact</span>
+          <span class="meta-value" id="meta-impact">—</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content" id="main-content">
+
+      <!-- Empty state before comparison -->
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">📊</div>
+        <h2>Select two versions to compare</h2>
+        <p>Choose a source and target version above. The comparison will run automatically.</p>
+      </div>
+
+      <!-- RESULTS (hidden until first compare) -->
+      <div id="results" class="results" style="display:none">
+
+        <!-- ─── EXECUTIVE SUMMARY ─── -->
+        <section id="summary" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Executive Summary</h2>
+            <div class="section-meta" id="compare-meta"></div>
+          </div>
+
+          <div class="stat-cards" id="stat-cards">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="ai-insight" id="ai-insight">
+            <!-- Populated by JS -->
+          </div>
+        </section>
+
+        <!-- ─── CATEGORIES ─── -->
+        <section id="categories" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Category Changes</h2>
+            <span class="section-count" id="cat-section-count"></span>
+          </div>
+
+          <!-- Filter pills (sticky) -->
+          <div class="filter-bar sticky-filters" id="category-filters">
+            <button class="filter-pill active" data-filter="all">All</button>
+            <button class="filter-pill added" data-filter="added">+ Added</button>
+            <button class="filter-pill removed" data-filter="removed">− Removed</button>
+            <button class="filter-pill renamed" data-filter="renamed">↩ Renamed</button>
+            <button class="filter-pill moved" data-filter="moved">↕ Moved</button>
+            <button class="filter-pill modified" data-filter="modified">~ Modified</button>
+            <div class="filter-search">
+              <input type="search" id="cat-search" class="filter-search-input" placeholder="Filter by name or path…" />
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table" id="categories-table">
+              <thead>
+                <tr>
+                  <th style="width:100px">Change</th>
+                  <th>Name</th>
+                  <th>Path</th>
+                  <th style="width:80px">Impact</th>
+                </tr>
+              </thead>
+              <tbody id="categories-tbody">
+                <!-- Populated by VirtualList -->
+              </tbody>
+            </table>
+            <div id="cat-virtual-spacer" style="height:0"></div>
+          </div>
+          <div class="table-footer" id="cat-table-footer"></div>
+        </section>
+
+        <!-- ─── ATTRIBUTES ─── -->
+        <section id="attributes" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Attribute Changes</h2>
+            <span class="section-count" id="attr-section-count"></span>
+          </div>
+
+          <div class="subsection">
+            <h3 class="subsection-title">Global Attribute Changes</h3>
+            <div class="table-wrapper">
+              <table class="data-table" id="attributes-table">
+                <thead>
+                  <tr>
+                    <th style="width:100px">Change</th>
+                    <th>Attribute</th>
+                    <th>Values Added</th>
+                    <th>Values Removed</th>
+                  </tr>
+                </thead>
+                <tbody id="attributes-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="subsection">
+            <h3 class="subsection-title">Category Assignment Changes</h3>
+            <p class="subsection-desc">Categories that gained or lost attribute assignments between versions.</p>
+            <div class="table-wrapper">
+              <table class="data-table" id="assignments-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Attributes Added</th>
+                    <th>Attributes Removed</th>
+                    <th style="width:80px">Impact</th>
+                  </tr>
+                </thead>
+                <tbody id="assignments-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── TREE VIEW ─── -->
+        <section id="tree" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Taxonomy Tree Diff</h2>
+            <div class="tree-controls">
+              <button class="btn btn-sm" id="tree-expand-all">Expand All</button>
+              <button class="btn btn-sm" id="tree-collapse-all">Collapse All</button>
+              <input type="search" id="tree-search" class="filter-search-input" style="width:200px" placeholder="Search tree…" />
+            </div>
+          </div>
+          <div class="tree-legend">
+            <span class="badge badge-added">+ Added</span>
+            <span class="badge badge-removed">− Removed</span>
+            <span class="badge badge-renamed">↩ Renamed</span>
+            <span class="badge badge-moved">↕ Moved</span>
+            <span class="badge badge-modified">~ Modified</span>
+          </div>
+          <div class="tree-container" id="tree-container">
+            <!-- Rendered by JS -->
+          </div>
+        </section>
+
+        <!-- ─── IMPACT ANALYSIS ─── -->
+        <section id="impact" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Impact Analysis</h2>
+          </div>
+          <div id="impact-level-banner" class="impact-banner"></div>
+          <div class="impact-grid">
+            <div class="impact-chart-card">
+              <h3 class="subsection-title">Top Affected Domains</h3>
+              <div id="impact-chart" class="chart-container"></div>
+            </div>
+            <div class="impact-narrative-card">
+              <h3 class="subsection-title">Analysis Narrative</h3>
+              <div id="impact-narrative" class="narrative-text"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── MIGRATION ─── -->
+        <section id="migration" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Migration Recommendations</h2>
+            <span class="section-count" id="migration-count"></span>
+          </div>
+          <p class="section-desc">Removed categories with suggested replacement categories based on name similarity.</p>
+          <div class="migration-grid" id="migration-grid">
+            <!-- Populated by JS -->
+          </div>
+        </section>
+
+        <!-- ─── SEARCH RESULTS ─── -->
+        <section id="search-results" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Search Results</h2>
+            <span class="section-count" id="search-count"></span>
+          </div>
+          <div id="search-results-content" class="search-results-content">
+            <div class="search-empty">
+              <p>Use the search bar at the top to search categories, attributes, and paths.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── PRODUCT IMPACT ─── -->
+        <section id="product" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Product Impact Analysis</h2>
+          </div>
+          <div class="upload-area" id="upload-area">
+            <div class="upload-icon">📁</div>
+            <h3>Upload Products CSV</h3>
+            <p>Drag & drop or click to upload a CSV file with columns:<br/>
+            <code>product_id, title, shopify_category_id</code></p>
+            <input type="file" id="product-file" accept=".csv" style="display:none" />
+            <button class="btn btn-outline" id="upload-btn">Choose File</button>
+          </div>
+          <div id="product-results" style="display:none">
+            <div class="stat-cards" id="product-stat-cards"></div>
+            <div class="table-wrapper" style="margin-top:1rem">
+              <table class="data-table" id="product-table">
+                <thead>
+                  <tr>
+                    <th>Product ID</th>
+                    <th>Title</th>
+                    <th>Category ID</th>
+                    <th>Status</th>
+                    <th>Recommended Action</th>
+                  </tr>
+                </thead>
+                <tbody id="product-tbody"></tbody>
+              </table>
+            </div>
+            <button class="btn btn-outline" id="product-export-btn" style="margin-top:1rem">Export Product Report CSV</button>
+          </div>
+        </section>
+
+      </div><!-- end #results -->
+    </main>
+  </div><!-- end .app-layout -->
+
+  <!-- ═══════════════════════════════════════════════════════════
+       FLOATING EXPORT BAR
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="export-bar" id="export-bar" style="display:none" aria-label="Export options">
+    <span class="export-label">Export:</span>
+    <button class="btn btn-export" data-format="csv" data-tooltip="Download CSV">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      CSV
+    </button>
+    <button class="btn btn-export" data-format="json" data-tooltip="Download JSON">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      JSON
+    </button>
+    <button class="btn btn-export" data-format="html" data-tooltip="Download HTML Report">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      HTML
+    </button>
+    <button class="btn btn-export" data-format="xlsx" data-tooltip="Download Excel">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Excel
+    </button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
