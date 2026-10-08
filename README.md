@@ -2,6 +2,8 @@
 
 A production-quality, single-page web application that compares two versions of the [Shopify Product Taxonomy](https://github.com/Shopify/product-taxonomy) and generates a comprehensive migration and impact report — entirely in the browser, with no backend required.
 
+UI: https://jaykishanstax.github.io/shopify-taxonomy-diff/
+
 ## Quick Start
 
 ```bash
