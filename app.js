@@ -148,13 +148,16 @@ const DiffEngine = {
       const nameChanged = catA.name      !== catB.name;
       const parChanged  = catA.parent_id !== catB.parent_id;
       const pathChanged = catA.full_name !== catB.full_name;
-      const attrsA = JSON.stringify([...(catA.attributes||[])].sort());
-      const attrsB = JSON.stringify([...(catB.attributes||[])].sort());
+      const attrIdsA = [...(catA.attributes||[])].map(String).sort();
+      const attrIdsB = [...(catB.attributes||[])].map(String).sort();
+      const attrsA = JSON.stringify(attrIdsA);
+      const attrsB = JSON.stringify(attrIdsB);
       const attrsChanged = attrsA !== attrsB;
-      if      (nameChanged && parChanged) renamed.push({ type:this.CHANGE.RENAMED, catA, catB, pathChanged:true, attrsChanged });
-      else if (nameChanged)               renamed.push({ type:this.CHANGE.RENAMED, catA, catB, pathChanged, attrsChanged });
-      else if (parChanged || pathChanged) moved.push({ type:this.CHANGE.MOVED, catA, catB, attrsChanged });
-      else if (attrsChanged)              modified.push({ type:this.CHANGE.MODIFIED, catA, catB });
+      const attrDetail = attrsChanged ? this.buildCategoryAttributeDetail(catA, catB, snapA, snapB) : null;
+      if      (nameChanged && parChanged) renamed.push({ type:this.CHANGE.RENAMED, catA, catB, pathChanged:true, attrsChanged, attrDetail });
+      else if (nameChanged)               renamed.push({ type:this.CHANGE.RENAMED, catA, catB, pathChanged, attrsChanged, attrDetail });
+      else if (parChanged || pathChanged) moved.push({ type:this.CHANGE.MOVED, catA, catB, attrsChanged, attrDetail });
+      else if (attrsChanged)              modified.push({ type:this.CHANGE.MODIFIED, catA, catB, attrDetail });
       else                                unchanged.push({ type:this.CHANGE.UNCHANGED, catA, catB });
     }
 
@@ -163,6 +166,29 @@ const DiffEngine = {
 
     const all = [...added, ...removed, ...renamed, ...moved, ...modified];
     return { added, removed, renamed, moved, modified, unchanged, all };
+  },
+
+  buildCategoryAttributeDetail(catA, catB, snapA, snapB) {
+    const oldIds = [...(catA.attributes || [])].map(String);
+    const newIds = [...(catB.attributes || [])].map(String);
+    const oldSet = new Set(oldIds);
+    const newSet = new Set(newIds);
+    const oldAttributes = oldIds.map(id => this.resolveAttributeDetail(id, snapA, snapB, oldSet.has(id) && newSet.has(id) ? 'unchanged' : 'removed'));
+    const activeNewAttributes = newIds.map(id => this.resolveAttributeDetail(id, snapB, snapA, oldSet.has(id) ? 'unchanged' : 'added'));
+    const removedInNewList = oldIds
+      .filter(id => !newSet.has(id))
+      .map(id => this.resolveAttributeDetail(id, snapA, snapB, 'removed'));
+    return {
+      oldAttributes,
+      newAttributes: [...activeNewAttributes, ...removedInNewList].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })),
+      added: activeNewAttributes.filter(attr => attr.status === 'added'),
+      removed: removedInNewList
+    };
+  },
+
+  resolveAttributeDetail(id, primarySnap, fallbackSnap, status) {
+    const attr = primarySnap.attributesById.get(id) || fallbackSnap.attributesById.get(id) || { id, name: id };
+    return { id, name: attr.name || id, status };
   },
 
   compareAttributes(snapA, snapB) {
@@ -326,6 +352,7 @@ const ReportGenerator = {
 const UILayer = {
   currentFilter: 'all',
   currentSearch: '',
+  currentSort: { key: 'path', direction: 'asc' },
   diffResult: null,
   report: null,
 
@@ -361,6 +388,17 @@ const UILayer = {
         if (this.diffResult) this.renderCategoriesTable(this.diffResult.catDiff);
       }, 200));
     }
+
+    // Category sorting
+    document.querySelectorAll('#categories-table .sort-header').forEach(button => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.sort;
+        if (!key) return;
+        const direction = this.currentSort.key === key && this.currentSort.direction === 'asc' ? 'desc' : 'asc';
+        this.currentSort = { key, direction };
+        if (this.diffResult) this.renderCategoriesTable(this.diffResult.catDiff);
+      });
+    });
 
     // Global search
     const globalSearch = document.getElementById('global-search');
@@ -511,13 +549,85 @@ const UILayer = {
                (item.catA && (item.catA.name||'').toLowerCase().includes(q));
       });
     }
-    return items;
+    return this.sortCategories(items);
+  },
+
+  sortCategories(items) {
+    const sorted = [...items];
+    const direction = this.currentSort.direction === 'desc' ? -1 : 1;
+    sorted.sort((a, b) => {
+      const av = this.getCategorySortValue(a, this.currentSort.key);
+      const bv = this.getCategorySortValue(b, this.currentSort.key);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * direction;
+      return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true }) * direction;
+    });
+    return sorted;
+  },
+
+  getCategorySortValue(item, key) {
+    const cat = item.catB || item.catA || {};
+    if (key === 'change') return item.type || '';
+    if (key === 'name') return cat.name || '';
+    if (key === 'impact') return Number(cat.level || 99);
+    return cat.full_name || '';
+  },
+
+  updateCategorySortHeaders() {
+    document.querySelectorAll('#categories-table .sort-header').forEach(button => {
+      const isActive = button.dataset.sort === this.currentSort.key;
+      const indicator = button.querySelector('.sort-indicator');
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-sort', isActive ? (this.currentSort.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+      if (indicator) indicator.textContent = isActive ? (this.currentSort.direction === 'asc' ? '▲' : '▼') : '↕';
+    });
+  },
+
+  renderFilteredCategorySummary(items, totalCount) {
+    const summaryEl = document.getElementById('category-filtered-summary');
+    if (!summaryEl) return;
+
+    const counts = items.reduce((acc, item) => {
+      const cat = item.catB || item.catA || {};
+      acc[item.type] = (acc[item.type] || 0) + 1;
+      if (cat.level === 1) acc.high += 1;
+      else if (cat.level === 2) acc.medium += 1;
+      else acc.low += 1;
+      return acc;
+    }, { added: 0, removed: 0, renamed: 0, moved: 0, modified: 0, high: 0, medium: 0, low: 0 });
+
+    const activeFilters = [];
+    if (this.currentFilter !== 'all') activeFilters.push(changeLabel(this.currentFilter).replace(/^[+−↩↕~]\s*/, ''));
+    if (this.currentSearch) activeFilters.push('Search: "' + esc(this.currentSearch) + '"');
+    const filterText = activeFilters.length ? activeFilters.join(' · ') : 'All category changes';
+    const cards = [
+      { label: 'Visible Changes', value: items.length.toLocaleString() },
+      { label: 'Added', value: counts.added.toLocaleString() },
+      { label: 'Removed', value: counts.removed.toLocaleString() },
+      { label: 'Renamed', value: counts.renamed.toLocaleString() },
+      { label: 'Moved', value: counts.moved.toLocaleString() },
+      { label: 'Modified', value: counts.modified.toLocaleString() },
+      { label: 'High Impact', value: counts.high.toLocaleString() },
+      { label: 'Medium Impact', value: counts.medium.toLocaleString() },
+      { label: 'Low Impact', value: counts.low.toLocaleString() }
+    ];
+
+    summaryEl.innerHTML = cards.map(card =>
+      '<div class="filtered-summary-card">' +
+        '<div class="filtered-summary-label">' + esc(card.label) + '</div>' +
+        '<div class="filtered-summary-value">' + card.value + '</div>' +
+      '</div>'
+    ).join('') +
+      '<div class="filtered-summary-note">Filtered summary for ' + esc(filterText) +
+      ' · ' + items.length.toLocaleString() + ' of ' + totalCount.toLocaleString() + ' category changes shown</div>';
   },
 
   renderCategoriesTable(catDiff) {
     const items = this.filterCategories(catDiff);
     const tbody = document.getElementById('categories-tbody');
     const footer = document.getElementById('cat-table-footer');
+
+    this.updateCategorySortHeaders();
+    this.renderFilteredCategorySummary(items, catDiff.all.length);
 
     const BATCH = 100;
     let rendered = 0;
@@ -587,17 +697,19 @@ const UILayer = {
       if (rendered < items.length) {
         footer.innerHTML += ' — <button class="btn btn-sm btn-outline" id="load-more-btn">Load more</button>';
         document.getElementById('load-more-btn').addEventListener('click', () => {
-          tbody.querySelectorAll('tr').forEach(()=>{});
           renderBatch();
         });
       }
     };
 
-    if (rendered === 0) tbody.innerHTML = '';
+    tbody.innerHTML = '';
     renderBatch();
 
     const countEl = document.getElementById('cat-section-count');
-    if (countEl) countEl.textContent = items.length + ' items' + (this.currentFilter !== 'all' ? ' (filtered)' : '');
+    if (countEl) {
+      const filtered = this.currentFilter !== 'all' || Boolean(this.currentSearch);
+      countEl.textContent = items.length + ' items' + (filtered ? ' (filtered)' : '');
+    }
   },
 
   renderAttributesSection(attrDiff, snapA, snapB) {
@@ -1233,7 +1345,40 @@ function buildDetailHTML(item) {
   if (item.suggestions && item.suggestions.length)
     html += detail('Suggested Replacement', item.suggestions.map(s=>s.name+' ('+Math.round(s.score*100)+'%)').join(', '));
   html += '</div>';
+  if (item.attrDetail) html += buildAttributeDetailHTML(item.attrDetail);
   return html;
+}
+
+function buildAttributeDetailHTML(attrDetail) {
+  const addedCount = attrDetail.added.length;
+  const removedCount = attrDetail.removed.length;
+  return '<div class="attribute-detail">' +
+    '<div class="attribute-detail-header">Attribute assignments changed · ' +
+      '<span class="attribute-count added">+' + addedCount + ' added</span> ' +
+      '<span class="attribute-count removed">−' + removedCount + ' removed</span>' +
+    '</div>' +
+    '<div class="attribute-columns">' +
+      '<div class="attribute-column">' +
+        '<h4>Old Attributes</h4>' +
+        buildAttributeList(attrDetail.oldAttributes, false) +
+      '</div>' +
+      '<div class="attribute-column">' +
+        '<h4>New Attributes</h4>' +
+        buildAttributeList(attrDetail.newAttributes, true) +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function buildAttributeList(attributes, showStatus) {
+  if (!attributes.length) return '<p class="attribute-empty">No attributes</p>';
+  return '<ul class="attribute-list">' + attributes.map(attr => {
+    const statusClass = 'attribute-item ' + attr.status;
+    const statusLabel = showStatus && attr.status !== 'unchanged'
+      ? '<span class="attribute-status">' + (attr.status === 'added' ? '+ Added' : '− Removed') + '</span>'
+      : '';
+    return '<li class="' + statusClass + '"><span class="attribute-name">' + esc(attr.name) + '</span>' + statusLabel + '</li>';
+  }).join('') + '</ul>';
 }
 
 function detail(label, value) {
