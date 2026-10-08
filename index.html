@@ -200,14 +200,34 @@
             </div>
           </div>
 
+          <div class="filtered-summary" id="category-filtered-summary" aria-live="polite">
+            <!-- Populated by JS based on active category filters -->
+          </div>
+
           <div class="table-wrapper">
             <table class="data-table" id="categories-table">
               <thead>
                 <tr>
-                  <th style="width:100px">Change</th>
-                  <th>Name</th>
-                  <th>Path</th>
-                  <th style="width:80px">Impact</th>
+                  <th style="width:100px" scope="col">
+                    <button class="sort-header" type="button" data-sort="change" aria-label="Sort category changes by change type">
+                      Change <span class="sort-indicator" aria-hidden="true">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col">
+                    <button class="sort-header" type="button" data-sort="name" aria-label="Sort category changes by name">
+                      Name <span class="sort-indicator" aria-hidden="true">↕</span>
+                    </button>
+                  </th>
+                  <th scope="col">
+                    <button class="sort-header" type="button" data-sort="path" aria-label="Sort category changes by path">
+                      Path <span class="sort-indicator" aria-hidden="true">↕</span>
+                    </button>
+                  </th>
+                  <th style="width:80px" scope="col">
+                    <button class="sort-header" type="button" data-sort="impact" aria-label="Sort category changes by impact">
+                      Impact <span class="sort-indicator" aria-hidden="true">↕</span>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody id="categories-tbody">
